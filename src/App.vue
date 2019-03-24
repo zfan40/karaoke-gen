@@ -16,9 +16,8 @@ export default {
       if (this.currentMode === "vocal") {
         return "http://101.201.28.186:8889/api/karaoke/upload/remove_voice";
       } else {
-        return `http://101.201.28.186:8889/api/karaoke/upload/transpose_voice?semitone=${
-          this.semitone
-        }`;
+        return `http://101.201.28.186:8889/api/karaoke/upload/transpose_voice?semitone=${+this
+          .semitone}`;
       }
     }
   },
@@ -35,19 +34,19 @@ export default {
       options: [
         {
           value: "+1",
-          label: "+1"
+          label: "升1个音"
         },
         {
           value: "+2",
-          label: "+2"
+          label: "升2个音"
         },
         {
           value: "-1",
-          label: "-1"
+          label: "降1个音"
         },
         {
           value: "-2",
-          label: "-2"
+          label: "降2个音"
         }
       ]
     };
@@ -70,13 +69,20 @@ export default {
       //to Ali
       axios
         .post(
-          `http://101.201.28.186:8889/api/karaoke/order/remove_voice?file_id=${
-            this.file_id
-          }`
+          this.orderType == "vocal"
+            ? `http://101.201.28.186:8889/api/karaoke/order/remove_voice?file_id=${
+                this.file_id
+              }`
+            : `http://101.201.28.186:8889/api/karaoke/order/transpose_voice?semitone=${+this
+                .semitone}&file_id=${this.file_id}`
         )
         .then(function(response) {
           // handle success
-          console.log(response);
+          // console.log(response);
+          const div = document.createElement("div");
+          div.innerHTML = response.data; // html code
+          document.body.appendChild(div);
+          document.forms[0].submit();
         })
         .catch(function(error) {
           // handle error
@@ -102,9 +108,19 @@ export default {
         )
         .then(res => {
           console.log(res);
-          location.href = `http://${res.data.data}`;
+          if (res.data.status !== 200) {
+            this.$refs.upload.clearFiles();
+            this.$notify({
+              title: res.data.data,
+              message: "",
+              type: "warning"
+            });
+          } else {
+            location.href = `http://${res.data.data}`;
+          }
         })
         .catch(() => {
+          this.$refs.upload.clearFiles();
           this.$notify({
             title: "Warning",
             message: "This is a warning message",
@@ -123,8 +139,9 @@ export default {
     handleProgress(env, file, fileList) {},
     handleChange(file, fileList) {},
     handleError(err) {
+      this.$refs.upload.clearFiles();
       this.$notify({
-        title: "Warning",
+        title: "Warning3",
         message: "This is a warning message",
         type: "warning"
       });
@@ -145,15 +162,25 @@ export default {
       // });
       this.isLoading = false;
       console.log(res);
-      this.previewWork = {
-        title: `${this.currentMode === "vocal" ? "去人声" : "转调"}预览`,
-        artist: "va",
-        src: `http://${res.data.preview_url}`,
-        pic: "//2ndsenseaudio.com/wp-content/uploads/2015/10/logo@2x.png"
-      };
-      this.$refs.upload.clearFiles();
-      console.log(this.previewWork);
-      this.file_id = res.data.id;
+      if (res.status === 200) {
+        this.previewWork = {
+          title: `${this.currentMode === "vocal" ? "去人声" : "转调"}预览`,
+          artist: "",
+          src: `http://${res.data.preview_url}`,
+          pic: "//2ndsenseaudio.com/wp-content/uploads/2015/10/logo@2x.png"
+        };
+        this.$refs.upload.clearFiles();
+        console.log(this.previewWork);
+        this.orderType = this.currentMode;
+        this.file_id = res.data.id;
+      } else {
+        this.$refs.upload.clearFiles();
+        this.$notify({
+          title: res.data,
+          message: "",
+          type: "warning"
+        });
+      }
     },
     handlePreview() {},
     previewLinks() {},
@@ -167,19 +194,23 @@ export default {
 <template>
   <div id="app">
     <el-container>
-      <el-header>
+      <el-header style="height:120px">
         <!-- <router-link to="/">Home</router-link>|
         <router-link to="/about">About</router-link>-->
         <div
-          style="position:relative;width:100%;background-color:orange;line-height:60px;"
-        >Karaoke Gen</div>
+          style="position:relative;width:100%;background-color:grey;line-height:40px;font-size:26px;padding:20px;"
+        >
+          <p>伴奏生成器 去人声 升降调</p>
+          <p>(目前支持mp3,wav格式文件)</p>
+        </div>
         <span
-          style="position:absolute;font-size:14px; color:white;width:10%;line-height:60px;top:0;right:0;cursor:pointer;"
+          style="position:absolute;font-size:14px; color:white;width:10%;line-height:120px;top:0;right:4%;cursor:pointer;"
           @click="trackOrderAppear = true"
         >找回订单</span>
       </el-header>
-      <el-main v-loading="isLoading" element-loading-text="正在为您生成文件">
+      <el-main v-loading="isLoading" element-loading-text="请等待处理...长度5分钟的MP3大约需要处理2分钟">
         <div class="function-section">
+          <el-row :gutter="24">请选择要使用的模式，并上传文件试听</el-row>
           <el-row :gutter="24">
             <el-col :span="12">
               <div
@@ -187,7 +218,7 @@ export default {
                 v-bind:class="{ active: currentMode == 'vocal' }"
                 @click="updateMode('vocal')"
               >
-                <h3>自动去人声</h3>
+                <h3>自动去人声(1元/首)</h3>
                 <p>点击鼠标，一键生成伴奏</p>
               </div>
             </el-col>
@@ -197,10 +228,15 @@ export default {
                 v-bind:class="{ active: currentMode == 'transpose' }"
                 @click="updateMode('transpose')"
               >
-                <h3>升调&降调</h3>
+                <h3>升调&降调(1元/首)</h3>
                 <p>唱不上去的朋友有福了</p>
                 <span style="position:absolute;bottom:5px;right:5%;">
-                  <el-select v-model="semitone" placeholder="半音个数" :change="handleSemitoneChange">
+                  <el-select
+                    style="width:150px"
+                    v-model="semitone"
+                    placeholder="半音个数"
+                    :change="handleSemitoneChange"
+                  >
                     <el-option
                       v-for="item in options"
                       :key="item.value"
@@ -233,7 +269,7 @@ export default {
               拖拽音频文件或
               <em>点击上传</em>
             </div>
-            <div class="el-upload__tip" slot="tip">上传待处理音频</div>
+            <div class="el-upload__tip" slot="tip" style="color:white">上传待处理音频</div>
           </el-upload>
         </div>
         <div class="preview-section" v-if="previewWork.src">
@@ -244,7 +280,7 @@ export default {
         </div>
 
         <el-dialog
-          element-loading-text="正在为您找回文件"
+          element-loading-text="请等待处理...长度5分钟的MP3大约需要处理2分钟"
           title="找回订单"
           v-loading="isLoading"
           :visible.sync="trackOrderAppear"
@@ -260,7 +296,9 @@ export default {
           </span>
         </el-dialog>
       </el-main>
-      <!-- <el-footer>Footer</el-footer> -->
+      <el-footer
+        style="display:flex;align-items:center;justify-content:center;"
+      >©2019 联系邮箱：info@2ndsenseaudio.com</el-footer>
     </el-container>
     <!-- <router-view /> -->
   </div>
@@ -278,6 +316,8 @@ export default {
   -moz-osx-font-smoothing: grayscale;
   text-align: center;
   color: #2c3e50;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 .active {
   background-color: orange !important;
@@ -319,5 +359,8 @@ export default {
       color: #42b983;
     }
   }
+}
+.pay-section {
+  margin-top: 30px;
 }
 </style>
